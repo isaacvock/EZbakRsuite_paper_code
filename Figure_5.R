@@ -97,16 +97,16 @@ lfn_sd <- 0.2
 
 
 
-simdata <- SimulateDynamics(nfeatures,
-                            graph,
-                            metadf,
-                            formula_list,
-                            log_means,
-                            log_sds,
-                            unassigned_name,
-                            seqdepth,
-                            dispersion,
-                            lfn_sd)
+simdata <- SimulateDynamics(nfeatures = nfeatures,
+                            graph = graph,
+                            metadf = metadf,
+                            formula_list = formula_list,
+                            log_means = log_means,
+                            log_sds = log_sds,
+                            unassigned_name = unassigned_name,
+                            seqdepth = seqdepth,
+                            dispersion = dispersion,
+                            lfn_sd = lfn_sd)
 
 
 cB <- simdata$cB %>%
@@ -142,7 +142,15 @@ gt <- simdata$ground_truth$parameter_truth
 dynfit <- ezbdo$dynamics$dynamics1
 
 compare <- dplyr::inner_join(dynfit, gt,
-                             by = "feature")
+                             by = "feature") %>%
+  dplyr::rename(
+    k1 = logk1,
+    k2 = logk2,
+    k3 = logk3,
+    k1_se = se_logk1,
+    k2_se = se_logk2,
+    k3_se = se_logk3
+  )
 
 
 scale_factor <- mean(exp(compare$k1) / compare$true_k1)
@@ -313,16 +321,17 @@ lfn_sd <- 0.2
 
 
 
-simdata <- SimulateDynamics(nfeatures,
-                            graph,
-                            metadf,
-                            formula_list,
-                            log_means,
-                            log_sds,
-                            unassigned_name,
-                            seqdepth,
-                            dispersion,
-                            lfn_sd)
+simdata <- SimulateDynamics(nfeatures = nfeatures,
+                            graph = graph,
+                            metadf = metadf,
+                            formula_list = formula_list,
+                            log_means = log_means,
+                            log_sds = log_sds,
+                            unassigned_name = unassigned_name,
+                            seqdepth = seqdepth,
+                            dispersion = dispersion,
+                            lfn_sd = lfn_sd)
+
 
 
 metadf <- metadf
@@ -355,6 +364,16 @@ ezbdo <- EZDynamics(ezbdo,
 gt <- simdata$ground_truth$parameter_truth
 
 dynfit <- ezbdo$dynamics$dynamics1 %>%
+  dplyr::rename(
+    k1 = logk1,
+    k2 = logk2,
+    k3 = logk3,
+    k4 = logk4,
+    se_k1 = se_logk1,
+    se_k2 = se_logk2,
+    se_k3 = se_logk3,
+    se_k4 = se_logk4
+  ) %>%
   dplyr::filter(!((k1 > 9.9 | k1 < -9.9) |
                     (k2 > 9.9 | k2 < -9.9) |
                     (k3 > 9.9 | k3 < -9.9) |

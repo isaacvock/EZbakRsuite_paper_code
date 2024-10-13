@@ -8,7 +8,7 @@
 ##
 ## Required data: None
 ##
-## Estimated total runtime: ~1 hour
+## Estimated total runtime: ~30 minutes
 
 
 # Load dependencies ------------------------------------------------------------
@@ -104,16 +104,16 @@ lfn_sd <- 0.2
 
 
 
-simdata <- SimulateDynamics(nfeatures,
-                            graph,
-                            metadf,
-                            formula_list,
-                            log_means,
-                            log_sds,
-                            unassigned_name,
-                            seqdepth,
-                            dispersion,
-                            lfn_sd)
+simdata <- SimulateDynamics(nfeatures=nfeatures,
+                            graph = graph,
+                            metadf = metadf,
+                            formula_list = formula_list,
+                            log_means = log_means,
+                            log_sds = log_sds,
+                            unassigned_name = unassigned_name,
+                            seqdepth = seqdepth,
+                            dispersion = dispersion,
+                            lfn_sd = lfn_sd)
 
 
 metadf <- metadf
@@ -152,7 +152,24 @@ ezbdo <- EZDynamics(ezbdo,
 ### Assess accuracy
 gt <- simdata$ground_truth$parameter_truth
 
-dynfit <- ezbdo$dynamics$dynamics1
+# Change names to reflect old naming convention used to make
+# the plots originally
+dynfit <- ezbdo$dynamics$dynamics1 %>%
+  dplyr::rename(
+    k1 = logk1,
+    k2 = logk2,
+    k3 = logk3,
+    k4 = logk4,
+    k5 = logk5,
+    k6 = logk6,
+    k1_se = se_logk1,
+    k2_se = se_logk2,
+    k3_se = se_logk3,
+    k4_se = se_logk4,
+    k5_se = se_logk5,
+    k6_se = se_logk6
+  )
+
 
 compare <- dplyr::inner_join(dynfit, gt,
                              by = "feature")

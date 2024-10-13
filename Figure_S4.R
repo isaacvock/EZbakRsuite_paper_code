@@ -103,16 +103,16 @@ lfn_sd <- 0.2
 
 
 
-simdata <- SimulateDynamics(nfeatures,
-                            graph,
-                            metadf,
-                            formula_list,
-                            log_means,
-                            log_sds,
-                            unassigned_name,
-                            seqdepth,
-                            dispersion,
-                            lfn_sd)
+simdata <- SimulateDynamics(nfeatures=nfeatures,
+                            graph = graph,
+                            metadf = metadf,
+                            formula_list = formula_list,
+                            log_means = log_means,
+                            log_sds = log_sds,
+                            unassigned_name = unassigned_name,
+                            seqdepth = seqdepth,
+                            dispersion = dispersion,
+                            lfn_sd = lfn_sd)
 
 
 metadf <- metadf
@@ -145,7 +145,17 @@ ezbdo_ez <- EZDynamics(ezbdo,
 ### Assess accuracy
 gt <- simdata$ground_truth$parameter_truth
 
+# Change names to reflect old naming convention used to make
+# the plots originally
 dynfit <- ezbdo_ez$dynamics$dynamics1 %>%
+  dplyr::rename(
+    k1 = logk1,
+    k2 = logk2,
+    k3 = logk3,
+    k1_se = se_logk1,
+    k2_se = se_logk2,
+    k3_se = se_logk3
+  ) %>%
   dplyr::filter(!((k1 > 9.9 | k1 < -9.9) |
                     (k2 > 9.9 | k2 < -9.9) |
                     (k3 > 9.9 | k3 < -9.9)))
@@ -274,7 +284,6 @@ ezbdo_un <- EZDynamics(ezbdo,
                        sub_features = "GF",
                        grouping_features = "GF",
                        sample_feature = "compartment",
-                       scale_factors = scale_df,
                        modeled_to_measured = list(
                          total = total_list,
                          nuclear = nuc_list,
@@ -286,12 +295,16 @@ ezbdo_un <- EZDynamics(ezbdo,
 ### Assess accuracy
 gt <- simdata$ground_truth$parameter_truth
 
+# Currently, EZbakR removes synthesis parameter
+# if normalization impossible; future versions
+# will change this behavior though to perform
+# post-hoc normalization.
 dynfit <- ezbdo_un$dynamics$dynamics1 %>%
   dplyr::rename(
-    k3 = k2,
-    k2 = k1,
-    se_k3 = se_k2,
-    se_k2 = se_k1,
+    k3 = logk2,
+    k2 = logk1,
+    se_k3 = se_logk2,
+    se_k2 = se_logk1,
   ) %>%
   dplyr::filter(!((k2 > 9.9 | k2 < -9.9) |
                     (k3 > 9.9 | k3 < -9.9)))
@@ -374,7 +387,9 @@ ggsave(
 #### LIBRARY SIZE NORMALIZED READ COUNTS
 
 
-scale_df_unscaled <- scale_df %>%
+scale_df_unscaled <- tibble(
+  compartment = unique(metadf$compartment)
+) %>%
   mutate(scale = 1)
 
 ezbdo_ls <- EZDynamics(ezbdo,
@@ -394,9 +409,18 @@ ezbdo_ls <- EZDynamics(ezbdo,
 gt <- simdata$ground_truth$parameter_truth
 
 dynfit <- ezbdo_ls$dynamics$dynamics1 %>%
+  dplyr::rename(
+    k1 = logk1,
+    k2 = logk2,
+    k3 = logk3,
+    k1_se = se_logk1,
+    k2_se = se_logk2,
+    k3_se = se_logk3
+  ) %>%
   dplyr::filter(!((k1 > 9.9 | k1 < -9.9) |
                     (k2 > 9.9 | k2 < -9.9) |
                     (k3 > 9.9 | k3 < -9.9)))
+
 
 compare <- dplyr::inner_join(dynfit, gt %>% dplyr::rename(GF = feature),
                              by = "GF")
@@ -409,7 +433,7 @@ gPk1_ls <- compare %>%
     n = 200
   )) %>%
   ggplot(aes(x = log(true_k1),
-             y = log(exp(k1)/scale_factor),
+             y = log(exp(k1)/true_scale_factor),
              color = density)) +
   geom_point(size=0.4) +
   theme_classic() +

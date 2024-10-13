@@ -219,7 +219,7 @@ saveRDS(ezbdo_nh,
 
 ### Explore fit
 
-mutrates <- ezbdo_h$mutation_rates$feature_TC %>%
+mutrates <- ezbdo_h$mutation_rates$XF_TC %>%
   dplyr::filter(sample == "K562_total_WT_120min_rep1")
 
 fractions <- ezbdo_h$fractions$XF %>%

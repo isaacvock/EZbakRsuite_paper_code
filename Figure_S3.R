@@ -18,11 +18,21 @@
 library(dplyr)
 library(ggplot2)
 library(data.table)
-library(devtools)
-load_all("C:/Users/isaac/Documents/Simon_Lab/EZbakR/")
+library(EZbakR)
 library(rtracklayer)
 library(tidyr)
 library(readxl)
+
+
+# Path to cB file
+cB_path <- "G:/Shared drives/Matthew_Simon/IWV/EZbakR_paper/Data/Subcellular_TLseq/total_K562_lvl1and2/cB/cB.csv.gz"
+
+# Path to GTF file
+gtf_path <- "G:/Shared drives/Matthew_Simon/IWV/Annotations/Filtered_references/Hs_ensembl_lvl1_and_2.gtf"
+
+# Path to save files and figures to
+savedir <- getwd()
+
 
 # Get density of points in 2 dimensions.
 # @param x A numeric vector.
@@ -44,9 +54,9 @@ get_density <- function(x, y, ...) {
 ### Panel 1: Proportion intronic
 
 # Load data
-cB <- fread("G:/Shared drives/Matthew_Simon/IWV/EZbakR_paper/Data/Subcellular_TLseq/total_K562_lvl1and2/cB/cB.csv.gz")
+cB <- fread(cB_path)
 
-gtf <- rtracklayer::import("G:/Shared drives/Matthew_Simon/IWV/Annotations/Filtered_references/Hs_ensembl_lvl1_and_2.gtf")
+gtf <- rtracklayer::import(gtf_path)
 
 
 # Find intronless genes
@@ -111,18 +121,133 @@ gIC <- intron_content %>%
 
 
 
-setwd("C:/Users/isaac/Documents/Simon_Lab/EZbakR_paper/Figures/Supplemental_preRNA/")
+setwd(savedir)
 ggsave(filename = "Distribution_fraction_intronic.pdf",
        plot = gIC,
        width = 2,
        height = 1.67)
 
 
-### Panel 2: Violin plots of kp and kdeg
 
-ezbdo <- readRDS("G:/Shared drives/Matthew_Simon/IWV/EZbakR_paper/Fits/Subcellular_TL/DOcorrected_totalRNA_PtoM_ezfit_20240827.rds")
+# Panel 2: Violin plots of kp and kdeg -----------------------------------------
 
-estimates <- ezbdo$dynamics$dynamics1
+if(!exists("cB")){
+  cB <- fread(cB_path)
+}
+
+### Estimate fractions
+
+metadf <- tibble(
+  sample = unique(cB$sample)
+) %>%
+  dplyr::mutate(
+    tl = case_when(
+      grepl("_0min_", sample) ~ 0,
+      grepl("_15min_", sample) ~ 15,
+      grepl("_30min_", sample) ~ 30,
+      grepl("_60min_", sample) ~ 60,
+      grepl("_120min_", sample) ~ 120
+    )
+  ) %>% as_tibble()
+
+ezbdo <- EZbakRData(cB,
+                    metadf)
+
+ezbdo <- EstimateFractions(ezbdo,
+                           features = c("GF", "XF"),
+                           filter_cols = "GF",
+                           pold_from_nolabel = TRUE)
+
+
+ezbdo <- CorrectDropout(ezbdo)
+
+
+### Get feature lengths from gtf for normalization
+
+# First, import the GTF-file
+library(GenomicFeatures)
+txdb <- makeTxDbFromGRanges(gtf)
+
+# then collect the exons per gene id
+exons.list.per.gene <- exonsBy(txdb,by="gene")
+
+# then for each gene, reduce all the exons to a set of non overlapping exons, calculate their lengths (widths) and sum then
+exonic.gene.sizes <- sum(width(reduce(exons.list.per.gene)))
+
+# Then get gene lengths
+genes <- genes(txdb)
+gene_sizes <- width(genes)
+names(gene_sizes) <- mcols(genes)$gene_id
+
+# Combine to infer "intron" length
+gene_df <- tibble(gene_width = gene_sizes,
+                  gene_id = names(gene_sizes))
+exon_df <- tibble(exon_width = exonic.gene.sizes,
+                  gene_id = names(exonic.gene.sizes))
+
+final_df <- gene_df %>%
+  inner_join(exon_df,
+             by = "gene_id") %>%
+  mutate(intron_width = gene_width - exon_width)
+
+
+lengths <- bind_rows(list(
+  tibble(GF = final_df$gene_id,
+         XF = "__no_feature",
+         length = final_df$intron_width),
+  tibble(GF = final_df$gene_id,
+         XF = final_df$gene_id,
+         length = final_df$exon_width)
+))
+
+
+ezbdo <- AverageAndRegularize(ezbdo,
+                              formula_mean = ~ tl,
+                              type = "fractions",
+                              feature_lengths = lengths,
+                              parameter = "logit_fraction_highTC")
+
+
+# graph
+graph <- matrix(c(0, 1, 0,
+                  0, 0, 2,
+                  3, 0, 0),
+                nrow = 3,
+                ncol = 3,
+                byrow = TRUE)
+
+colnames(graph) <- c("0", "P", "M")
+rownames(graph) <- colnames(graph)
+
+# formula list
+total_list <- list(GF ~ P,
+                   XF ~ M)
+
+
+ezbdo <- EZDynamics(ezbdo,
+                    graph,
+                    sub_features = c("GF", "XF"),
+                    grouping_features = "GF",
+                    modeled_to_measured = total_list)
+
+
+ezbdo$cB <- NULL
+setwd(savedir)
+saveRDS(ezbdo,
+        file = "DOcorrected_totalRNA_PtoM_ezfit_20240827.rds")
+
+
+# Change names to reflect old naming convention used to make
+# the plots originally
+estimates <- ezbdo$dynamics$dynamics1 %>%
+  dplyr::rename(
+    k1 = logk1,
+    k2 = logk2,
+    k3 = logk3,
+    k1_se = se_logk1,
+    k2_se = se_logk2,
+    k3_se = se_logk3
+  )
 
 gest_v <- estimates %>%
   filter(k2_se < 0.3 & k3_se < 0.3) %>%
@@ -163,7 +288,7 @@ gest_v <- estimates %>%
     legend.title=element_text(size=10)) + #change font size of legend title
   theme(legend.position = "none")
 
-setwd("C:/Users/isaac/Documents/Simon_Lab/EZbakR_paper/Figures/Supplemental_preRNA/")
+setwd(savedir)
 ggsave(filename = "Parameter_est_violin_plot.pdf",
        plot = gest_v,
        width = 2,
@@ -172,9 +297,17 @@ ggsave(filename = "Parameter_est_violin_plot.pdf",
 
 ### Panel 3: Scatter plot comparing the two for each feature
 
-ezbdo <- readRDS("G:/Shared drives/Matthew_Simon/IWV/EZbakR_paper/Fits/Subcellular_TL/DOcorrected_totalRNA_PtoM_ezfit_20240827.rds")
-
-estimates <- ezbdo$dynamics$dynamics1
+# Change names to reflect old naming convention used to make
+# the plots originally
+estimates <- ezbdo$dynamics$dynamics1 %>%
+  dplyr::rename(
+    k1 = logk1,
+    k2 = logk2,
+    k3 = logk3,
+    k1_se = se_logk1,
+    k2_se = se_logk2,
+    k3_se = se_logk3
+  )
 
 gest_s <- estimates %>%
   filter(k2_se < 0.3 & k3_se < 0.3) %>%

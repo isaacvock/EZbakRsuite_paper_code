@@ -25,11 +25,11 @@ library(bakR)
 # Directory to save figures to
 savedir <- getwd()
 
-# Directory containing all simulated data
-simdata_dir <- "Simulation_Replicates"
+# Directory containing all replicates of simulated data
+simdata_dir <- "G:/Shared drives/Matthew_Simon/IWV/bakR_Paper/Data/Fits/Simulation_Replicates/2_reps/"
 
 
-# MCC calculation
+# Use to get Matthew's Correlation Coefficient
 calc_MCC <- function(N, P, FDR, TPR){
 
   TP <- TPR*P
@@ -209,10 +209,6 @@ write_csv(final_df,
 
 ##### START HERE TO AVOID RERUNNING ANALYSIS
 
-if(!exists(final_df)){
-  setwd(savedir)
-  final_df <- read_csv("Two_reps_final_df.csv")
-}
 
 ### MCC plot
 
@@ -452,7 +448,7 @@ ggsave(plot = gFDR_s,
 
 
 
-# Collect some runtime data ----------------------------------------------------
+# Collect runtime data ---------------------------------------------------------
 
 trials <- 5
 
@@ -507,11 +503,6 @@ write_csv(final_time, "EZbakR_and_bakR_runtimes.csv")
 
 
 ##### START HERE TO AVOID RERUNING
-
-if(!exists(final_time)){
-  setwd(savedir)
-  final_time <- read_csv("EZbakR_and_bakR_runtimes.csv")
-}
 
 # MCMC time comes from runs on McCleary
 final_time <- final_time %>%
@@ -605,8 +596,49 @@ main_timeplot <- ggplot(Times,
   theme(legend.position = "none")
 
 
+set.seed(421)
+inset_timeplot <- ggplot(Times %>%
+                           filter(model != "bakR (MCMC)") %>%
+                           mutate(model = factor(model,
+                                                 levels = c("bakR (MLE)", "EZbakR"))),
+                         aes(x = model, y = Runtime, color = model)) +
+  geom_errorbar(data = avg_Times%>%
+                  filter(model != "bakR (MCMC)") %>%
+                  mutate(model = factor(model,
+                                        levels = c("bakR (MLE)", "EZbakR"))),
+                mapping = aes(x = model,
+                              ymin = avg_runtime - 2*sd_runtime/sqrt(5),
+                              ymax = avg_runtime + 2*sd_runtime/sqrt(5)),
+                width = 0.4, inherit.aes = FALSE,
+                linewidth = 0.2) +
+  geom_point(data = avg_Times%>%
+               filter(model != "bakR (MCMC)") %>%
+               mutate(model = factor(model,
+                                     levels = c("bakR (MLE)", "EZbakR"))),
+             mapping = aes(x = model,
+                           y = avg_runtime),
+             color = "black",
+             inherit.aes = FALSE,
+             size = 1)  +
+  geom_jitter( height = 0, width = 0.4, size = 0.8,
+               color = "gray50") +
+  theme_classic() +
+  xlab("Model") +
+  ylab("Runtime (s)") +
+  theme(legend.position = "none") +
+  coord_cartesian(ylim = c(0, 75)) +
+  theme(#text=element_text(size=20), #change font size of all text
+    axis.text=element_text(size=8), #change font size of axis text
+    axis.title=element_text(size=10), #change font size of axis titles
+    #plot.title=element_text(size=20), #change font size of plot title
+    legend.text=element_text(size=8), #change font size of legend text
+    legend.title=element_text(size=10), #change font size of legend title
+    axis.text.x = element_text(angle = 45, vjust = 0.6, hjust=0.5)) +
+  theme(legend.position = "none")
 
-setwd("C:/Users/isaac/Documents/Simon_Lab/EZbakR_paper/Figures/Figure_5/")
+
+
+setwd(savedir)
 ggsave(filename = "Comparing_runtimes_full.pdf",
        plot = main_timeplot,
        width = 2.25,

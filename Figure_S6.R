@@ -29,7 +29,7 @@ library(readxl)
 
 savedir <- getwd()
 
-gtf_path <- "Homo_sapiens.GRCh38.104.chr_chr.gtf"
+gtf_path <- "G:/Shared drives/Matthew_Simon/IWV/Genomes/Human_HISAT3N/Homo_sapiens.GRCh38.104.chr_chr.gtf"
 
 arrow_dataset_path <- "C:/Users/isaac/Documents/Simon_Lab/EZbakR_paper/Data/subtlseq_dataset/"
 
@@ -166,15 +166,13 @@ saveRDS(ezbdo, "CytoNuc_XF_Nucdeg_RPK_normalized.rds")
 
 ### STEP 8: How common is nuclear deg, and how do the putative PUNDs look?
 
-if(!exists(ezbdo)){
-  setwd(savedir)
-  ezbdo <- readRDS("CytoNuc_XF_Nucdeg_RPK_normalized.rds")
-}
 
 churchman_ests <- readxl::read_excel(previous_pund_sheets,
                                      sheet = 2)
 
+
 ez_ests <- ezbdo$dynamics$dynamics1
+
 ez_ests <- ez_ests %>%
   dplyr::rename(Gene = XF) %>%
   inner_join(churchman_ests %>%
