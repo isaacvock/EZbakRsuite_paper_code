@@ -3,8 +3,7 @@ Scripts for reproducing figures from EZbakR-suite paper.
 
 Data is available on Zenodo (DOI: 10.5281/zenodo.13929898).
 
-All scripts are R scripts. Analyses were performed with following version of software:
-
+All scripts are written in R.
 
 ## Package versions used for preprint figures:
 
