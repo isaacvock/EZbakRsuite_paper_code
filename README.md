@@ -8,19 +8,19 @@ All scripts are R scripts. Analyses were performed with following version of sof
 
 ## Package versions used for preprint figures:
 
-R 4.3.1
-EZbakR 0.0.0.9000 ([Preprint release on Github](https://github.com/isaacvock/EZbakR/tree/v0.0.0.9000))
-dplyr 1.1.4
-ggplot 3.4.4
-rtracklayer 1.62.0
-GenomicFeatures 1.54.1
-MASS 7.3.60
-data.table 1.14.10
-tidyr 1.3.0
-readr 2.1.5
-bakR 1.0.1
-readxl 1.4.3
-arrow 14.0.0.2
+* R 4.3.1
+* EZbakR 0.0.0.9000 ([Preprint release on Github](https://github.com/isaacvock/EZbakR/tree/v0.0.0.9000))
+* dplyr 1.1.4
+* ggplot 3.4.4
+* rtracklayer 1.62.0
+* GenomicFeatures 1.54.1
+* MASS 7.3.60
+* data.table 1.14.10
+* tidyr 1.3.0
+* readr 2.1.5
+* bakR 1.0.1
+* readxl 1.4.3
+* arrow 14.0.0.2
 
 
 ## Full session info when making preprint figures:
