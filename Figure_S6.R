@@ -29,12 +29,15 @@ library(readxl)
 
 savedir <- getwd()
 
-gtf_path <- "G:/Shared drives/Matthew_Simon/IWV/Genomes/Human_HISAT3N/Homo_sapiens.GRCh38.104.chr_chr.gtf"
+gtf_path <- "Hs_ensembl.gtf"
 
-arrow_dataset_path <- "C:/Users/isaac/Documents/Simon_Lab/EZbakR_paper/Data/subtlseq_dataset/"
+arrow_dataset_path <- "subtlseq_dataset/"
 
-previous_pund_sheets <- "C:/Users/isaac/Documents/Simon_Lab/EZbakR_paper/Data/Figure_4/Churchman_estimates/mmc2.xlsx"
+# Table S1 from the Subcellular TimeLapse-seq paper
+# Paper link: https://www.cell.com/molecular-cell/fulltext/S1097-2765(24)00511-2#:~:text=Thus%2C%20RNA%20flow%20impacts%20cell,processing%2C%20including%20splicing%20and%20polyadenylation.
+previous_pund_sheets <- "mmc2.xlsx"
 
+# Source: https://slowkow.com/notes/ggplot2-color-by-density/
 # Get density of points in 2 dimensions.
 # @param x A numeric vector.
 # @param y A numeric vector.

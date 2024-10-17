@@ -26,7 +26,7 @@ library(bakR)
 savedir <- getwd()
 
 # Directory containing all replicates of simulated data
-simdata_dir <- "G:/Shared drives/Matthew_Simon/IWV/bakR_Paper/Data/Fits/Simulation_Replicates/2_reps/"
+simdata_dir <- "bakR_simulations/"
 
 
 # Use to get Matthew's Correlation Coefficient

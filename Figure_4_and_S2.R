@@ -27,6 +27,8 @@ library(EZbakR)
 library(data.table)
 library(tidyr)
 
+
+# Source: https://slowkow.com/notes/ggplot2-color-by-density/
 # Get density of points in 2 dimensions.
 # @param x A numeric vector.
 # @param y A numeric vector.
@@ -46,10 +48,10 @@ get_density <- function(x, y, ...) {
 savedir <- getwd()
 
 # Path to cB file
-cB_path <- "G:/Shared drives/Matthew_Simon/IWV/EZbakR_paper/Data/Subcellular_TLseq/total_K562_ensembl/cB/cB.csv.gz"
+cB_path <- "cB_ensembl_totRNAsubtlseq.csv.gz"
 
 # Path to annotation GTF file
-gtf_path <- "G:/Shared drives/Matthew_Simon/IWV/Genomes/Human_HISAT3N/Homo_sapiens.GRCh38.104.chr_chr.gtf"
+gtf_path <- "Hs_ensembl.gtf"
 
 # Analyze simulated data -------------------------------------------------------
 

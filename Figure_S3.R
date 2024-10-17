@@ -25,15 +25,16 @@ library(readxl)
 
 
 # Path to cB file
-cB_path <- "G:/Shared drives/Matthew_Simon/IWV/EZbakR_paper/Data/Subcellular_TLseq/total_K562_lvl1and2/cB/cB.csv.gz"
+cB_path <- "cB_ensemblLvl1and2_totRNAsubtlseq.csv.gz"
 
 # Path to GTF file
-gtf_path <- "G:/Shared drives/Matthew_Simon/IWV/Annotations/Filtered_references/Hs_ensembl_lvl1_and_2.gtf"
+gtf_path <- "Hs_ensembl_lvl1_and_2.gtf"
 
 # Path to save files and figures to
 savedir <- getwd()
 
 
+# Source: https://slowkow.com/notes/ggplot2-color-by-density/
 # Get density of points in 2 dimensions.
 # @param x A numeric vector.
 # @param y A numeric vector.
@@ -345,7 +346,7 @@ gest_s <- estimates %>%
 
 gest_s
 
-setwd("C:/Users/isaac/Documents/Simon_Lab/EZbakR_paper/Figures/Supplemental_preRNA/")
+setwd(savedir)
 ggsave(filename = "Parameter_est_scatter.pdf",
        plot = gest_s,
        width = 2,

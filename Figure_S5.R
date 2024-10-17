@@ -21,6 +21,7 @@ library(MASS)
 
 savedir <- getwd()
 
+# Source: https://slowkow.com/notes/ggplot2-color-by-density/
 # Get density of points in 2 dimensions.
 # @param x A numeric vector.
 # @param y A numeric vector.
