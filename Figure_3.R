@@ -18,7 +18,7 @@ library(ggplot2)
 library(EZbakR)
 
 
-# Path to save figures to
+# Path to save figures and files to
 savedir <- getwd()
 
 

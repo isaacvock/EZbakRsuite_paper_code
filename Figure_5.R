@@ -22,7 +22,7 @@ library(EZbakR)
 library(MASS)
 
 
-# Path to save figures to
+# Path to save files and figures to
 savedir <- getwd()
 
 

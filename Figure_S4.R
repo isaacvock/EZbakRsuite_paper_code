@@ -21,6 +21,7 @@ library(EZbakR)
 library(MASS)
 
 
+# Directory to save figures and data to
 savedir <- getwd()
 
 

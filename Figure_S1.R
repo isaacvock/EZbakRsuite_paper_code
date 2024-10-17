@@ -20,6 +20,7 @@ library(MASS)
 library(data.table)
 
 
+# Path to save files and figures to
 savedir <- getwd()
 
 

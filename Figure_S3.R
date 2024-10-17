@@ -23,15 +23,14 @@ library(rtracklayer)
 library(tidyr)
 library(readxl)
 
+# Path to save files and figures to
+savedir <- getwd()
 
 # Path to cB file
 cB_path <- "cB_ensemblLvl1and2_totRNAsubtlseq.csv.gz"
 
 # Path to GTF file
 gtf_path <- "Hs_ensembl_lvl1_and_2.gtf"
-
-# Path to save files and figures to
-savedir <- getwd()
 
 
 # Source: https://slowkow.com/notes/ggplot2-color-by-density/

@@ -19,6 +19,7 @@ library(EZbakR)
 library(MASS)
 
 
+# Directory to save figures and data to
 savedir <- getwd()
 
 # Source: https://slowkow.com/notes/ggplot2-color-by-density/

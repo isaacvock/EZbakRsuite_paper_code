@@ -27,6 +27,15 @@ library(EZbakR)
 library(data.table)
 library(tidyr)
 
+# Path to save files and figures to
+savedir <- getwd()
+
+# Path to cB file
+cB_path <- "cB_ensembl_totRNAsubtlseq.csv.gz"
+
+# Path to annotation GTF file
+gtf_path <- "Hs_ensembl.gtf"
+
 
 # Source: https://slowkow.com/notes/ggplot2-color-by-density/
 # Get density of points in 2 dimensions.
@@ -41,17 +50,6 @@ get_density <- function(x, y, ...) {
   ii <- cbind(ix, iy)
   return(dens$z[ii])
 }
-
-
-
-# Path to save figures to
-savedir <- getwd()
-
-# Path to cB file
-cB_path <- "cB_ensembl_totRNAsubtlseq.csv.gz"
-
-# Path to annotation GTF file
-gtf_path <- "Hs_ensembl.gtf"
 
 # Analyze simulated data -------------------------------------------------------
 

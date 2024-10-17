@@ -25,12 +25,16 @@ library(MASS)
 library(rtracklayer)
 library(GenomicFeatures)
 library(readxl)
+library(arrow)
 
-
+# Directory to save figures and data to
 savedir <- getwd()
 
+# Path to annotation file used for processing data
 gtf_path <- "Hs_ensembl.gtf"
 
+# Path to arrow dataset containing processed Subcellular TL-seq data from
+# Ietswaart et al., 2024
 arrow_dataset_path <- "subtlseq_dataset/"
 
 # Table S1 from the Subcellular TimeLapse-seq paper

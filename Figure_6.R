@@ -22,7 +22,7 @@ library(EZbakR)
 library(bakR)
 
 
-# Directory to save figures to
+# Path to save files and figures to
 savedir <- getwd()
 
 # Directory containing all replicates of simulated data
