@@ -1,62 +1,16 @@
 ### PURPOSE OF THIS SCRIPT
-## Reproduce Figure S6 of EZbakR-suite paper.
-##
-## Workflow:
-## 1) Analyze subcellular NR-seq data with EZbakR and model including nuclear
-##    degradation
-## 2) Make figures assessing prevalence of nuclear degradation
-##
-## Required data:
-## 1) Arrow dataset made from total RNA, cytoplasmic RNA, and nuclear RNA
-##    cB files from Ietswaart et al 2024 paper.
-## 2) Annotation used to create cB files, for length normalization of read
-##    counts.
-## 3) Excel sheets from Ietswaart et al. from which previously identified
-##    PUNDs can be identified.
-##
-## Estimated total runtime: ~1 hour
+## Reproduce Figure S6 (comparison with kinetic parameters from
+## Ietswaart et al. 2024)
+
 
 # Load dependencies ------------------------------------------------------------
-
-library(ggplot2)
-library(dplyr)
-library(EZbakR)
-library(MASS)
-library(rtracklayer)
-library(GenomicFeatures)
 library(readxl)
-library(arrow)
+library(dplyr)
+library(ggplot2)
+library(devtools)
+load_all("C:/Users/isaac/Documents/Simon_Lab/EZbakR/")
 
-# Directory to save figures and data to
-savedir <- getwd()
-
-# Path to annotation file used for processing data
-gtf_path <- "Hs_ensembl.gtf"
-
-# Path to arrow dataset containing processed Subcellular TL-seq data from
-# Ietswaart et al., 2024
-arrow_dataset_path <- "subtlseq_dataset/"
-
-# Table S1 from the Subcellular TimeLapse-seq paper
-# Paper link: https://www.cell.com/molecular-cell/fulltext/S1097-2765(24)00511-2#:~:text=Thus%2C%20RNA%20flow%20impacts%20cell,processing%2C%20including%20splicing%20and%20polyadenylation.
-previous_pund_sheets <- "mmc2.xlsx"
-
-# Source: https://slowkow.com/notes/ggplot2-color-by-density/
-# Get density of points in 2 dimensions.
-# @param x A numeric vector.
-# @param y A numeric vector.
-# @param n Create a square n by n grid to compute density.
-# @return The density within each square.
-get_density <- function(x, y, ...) {
-  dens <- MASS::kde2d(x, y, ...)
-  ix <- findInterval(x, dens$x)
-  iy <- findInterval(y, dens$y)
-  ii <- cbind(ix, iy)
-  return(dens$z[ii])
-}
-
-
-# Figure S6 --------------------------------------------------------------------
+# Fit full model to subcellular TL-seq data ------------------------------------
 
 ### STEP 1: ESTIMATE FRACTIONS
 
@@ -69,17 +23,19 @@ pl_list <- list(XF ~ PL)
 tot_list <- list(XF ~ CH + CY + NP + PL)
 
 
-ds <- open_dataset(arrow_dataset_path)
+ds <- open_dataset("C:/Users/")
 
-comps <- c("cyto", "nuc", "total")
+comps <- c("chr", "cyto", "nuc", "poly", "total")
 times <- c("0min", "15min", "30min", "60min", "120min")
 metadf <- tibble(sample = paste0("K562_",
                                  rep(comps, each = 10),
                                  "_WT_",
-                                 rep(rep(times, each = 2), times = 3),
-                                 rep(c("_rep1", "_rep2"), times = 15))) %>%
+                                 rep(rep(times, each = 2), times = 5),
+                                 rep(c("_rep1", "_rep2"), times = 25))) %>%
   mutate(compartment = case_when(
+    grepl("_chr_", sample) ~ "chromatin",
     grepl("_nuc_", sample) ~ "nucleus",
+    grepl("_poly_", sample) ~ "polysome",
     grepl("_cyto_", sample) ~ "cytoplasm",
     grepl("_total_", sample) ~ "total"
   ),
@@ -103,173 +59,376 @@ ezbado <- EstimateFractions(ezbado,
 ezbado_c <- CorrectDropout(ezbado)
 
 
-### STEP 4: DEFINE MODEL
+### STEP 4: ESTIMATE NORMALZIATION FACTORS
 
 
 # graph
-graph <- matrix(c(0, 1, 0,
-                  2, 0, 3,
-                  4, 0, 0),
-                nrow = 3,
-                ncol = 3,
+graph <- matrix(c(0, 1, 0, 0, 0,
+                  0, 0, 2, 0, 0,
+                  0, 0, 0, 3, 0,
+                  4, 0, 0, 0, 5,
+                  4, 0, 0, 0, 0),
+                nrow = 5,
+                ncol = 5,
                 byrow = TRUE)
 
-colnames(graph) <- c("0", "N", "C")
+colnames(graph) <- c("0", "CH", "NP", "CY", "PL")
 rownames(graph) <- colnames(graph)
 
-# formula list
-total_list <- list(XF ~ C + N)
-nuc_list <- list(XF ~ N)
-cyt_list <- list(XF ~ C)
 
-
-### STEP 5: GET FEATURE LENGTHS
-
-gtf <- rtracklayer::import(gtf_path)
-txdb <- makeTxDbFromGRanges(gtf)
-
-exons.list.per.gene <- exonsBy(txdb,by="gene")
-
-exonic.gene.sizes <- sum(width(reduce(exons.list.per.gene)))
-
-exon_df <- tibble(exon_width = exonic.gene.sizes,
-                  gene_id = names(exonic.gene.sizes))
-
-
-lengths <- exon_df %>%
-  dplyr::rename(XF = gene_id,
-                length = exon_width)
-
-
-
-### STEP 6: AVERAGE
-
+### STEP 5: FIT MODEL
 
 # With separate compartments as separate samples
 ezbado_c <- AverageAndRegularize(ezbado_c,
                                  formula_mean = ~tl:compartment - 1,
                                  type = "fractions",
-                                 feature_lengths = lengths,
                                  parameter = "logit_fraction_highTC")
 
 
-
-### STEP 7: Fit model
-
-ezbdo <- EZDynamics(ezbado_c,
-                    graph = graph,
-                    sub_features = "XF",
-                    grouping_features = "XF",
-                    sample_feature = "compartment",
-                    modeled_to_measured = list(
-                      total = total_list,
-                      nucleus = nuc_list,
-                      cytoplasm = cyt_list
-                    ))
-
-setwd(savedir)
-saveRDS(ezbdo, "CytoNuc_XF_Nucdeg_RPK_normalized.rds")
-
-
-### STEP 8: How common is nuclear deg, and how do the putative PUNDs look?
-
-
-churchman_ests <- readxl::read_excel(previous_pund_sheets,
-                                     sheet = 2)
-
-
-ez_ests <- ezbdo$dynamics$dynamics1
-
-ez_ests <- ez_ests %>%
-  dplyr::rename(Gene = XF) %>%
-  inner_join(churchman_ests %>%
-               dplyr::select(Gene, Symbol, PUND),
-             by = "Gene")
-
-
-conf_cutoff <- 0.3
-
-ez_ests <- ez_ests %>%
-  dplyr::mutate(kdn_confidence = factor(case_when(
-    se_logk2 < conf_cutoff ~ "high",
-    se_logk2 >= conf_cutoff ~ "low",
-  ), levels = c("low", "high")))
-
-gkdn <- ez_ests %>%
-  dplyr::mutate(PUND = factor(PUND, levels = c("TRUE", "FALSE"))) %>%
-  dplyr::arrange(desc(PUND)) %>%
-  na.omit() %>%
-  ggplot(aes(x = logk2, y = logk3,
-             color = PUND,
-             alpha = kdn_confidence)) +
-  geom_point(size = 0.5) +
-  theme_classic() +
-  scale_color_manual(
-    values = c("darkred", "gray50")
-  ) +
-  scale_alpha_manual(
-    values = c(0.1, 1)
-  ) +
-  xlab("log(kdn)") +
-  ylab("log(kp)") +
-  geom_abline(slope = 1,
-              intercept = 0,
-              color = 'black',
-              linetype = 'dotted',
-              linewidth = 0.7) +
-  theme(#text=element_text(size=20), #change font size of all text
-    axis.text=element_text(size=10), #change font size of axis text
-    axis.title=element_text(size=12), #change font size of axis titles
-    #plot.title=element_text(size=20), #change font size of plot title
-    legend.text=element_text(size=10), #change font size of legend text
-    legend.title=element_text(size=12))
-
-# How many PUNDS are in low confience set
-pund_perc_lc <- sum(ez_ests$PUND[ez_ests$kdn_confidence == "low"] == "TRUE")/sum(ez_ests$kdn_confidence == "low")
-# 2% of these are PUNDs
-notpund_perc_lc <- 1 - pund_perc_lc
-
-pund_perc_hc <- sum(ez_ests$PUND[ez_ests$kdn_confidence == "high"] == "TRUE")/sum(ez_ests$kdn_confidence == "high")
-# 43.2% of these are PUNDs
-notpund_perc_hc <- 1 - pund_perc_hc
-
-bar_df <- tibble(
-  kdn_confidence = factor(rep(c("low", "high"), each = 2),
-                          levels = c("low", "high")),
-  perc = c(pund_perc_lc, notpund_perc_lc,
-           pund_perc_hc, notpund_perc_hc),
-  PUND = factor(c("TRUE", "FALSE",
-                  "TRUE", "FALSE"),
-                levels = c("TRUE", "FALSE"))
+# Estimate parameters
+ezbado_c <- EZDynamics(ezbado_c,
+                       graph = graph,
+                       sub_features = feature_to_use,
+                       grouping_features = feature_to_use,
+                       sample_feature = "compartment",
+                       modeled_to_measured = list(chromatin = chr_list,
+                                                  nucleus = nuc_list,
+                                                  cytoplasm = cyt_list,
+                                                  polysome = pl_list,
+                                                  total = tot_list)
 )
 
-gpp <- bar_df %>%
-  ggplot(aes(x = kdn_confidence,
-             y = perc,
-             fill = PUND)) +
-  geom_bar(stat = "identity") +
+
+setwd("G:/Shared drives/Matthew_Simon/IWV/EZbakR_paper/Fits/Subcellular_TL/")
+saveRDS(ezbado_c,
+        file= "XF_fullDOC_fnonly_subtlseq_fit_20240910.rds")
+
+
+# Figure S6 --------------------------------------------------------------------
+
+churchman_ests <- readxl::read_excel("C:/Users/isaac/Documents/Simon_Lab/EZbakR_paper/Data/Figure_4/Churchman_estimates/mmc2.xlsx",
+                                     sheet = 2)
+
+setwd("C:/Users/isaac/Yale University/Simon Lab – RNA - Documents/IWV/EZbakR_paper/Fits/Subcellular_TL/")
+ez_ests <- readRDS("XF_fullDOC_fnonly_subtlseq_fit_20240910.rds")
+my_ests <- ez_ests$dynamics$dynamics1
+
+if("GF" %in% colnames(my_ests)){
+
+  my_ests <- my_ests %>%
+    dplyr::rename(XF = GF)
+
+}
+
+if("k2_se" %in% colnames(my_ests)){
+
+  my_ests <- my_ests %>%
+    dplyr::rename(se_k2 = k2_se,
+                  se_k3 = k3_se,
+                  se_k4 = k4_se,
+                  se_k5 = k5_se)
+
+}
+
+
+### Uncertainties
+
+u_violin <- my_ests %>%
+  dplyr::select(-k1, -se_k1) %>%
+  dplyr::select(starts_with("se_")) %>%
+  tidyr::pivot_longer(
+    everything(),
+    values_to = "uncertainty",
+    names_to = "parameter"
+  ) %>%
+  dplyr::mutate(
+    parameter = factor(case_when(
+      parameter == "se_k2" ~ "kch",
+      parameter == "se_k3" ~ "kexp",
+      parameter == "se_k4" ~ "kdeg",
+      parameter == "se_k5" ~ "kpl"
+    ),
+    levels = c("kch", "kexp", "kdeg", "kpl")
+    )
+  ) %>%
+  dplyr::filter(
+    uncertainty < 1.5
+  ) %>%
+  ggplot(
+    aes(x = parameter,
+        y = log(uncertainty),
+        fill = parameter)
+  ) +
+  geom_jitter(
+    width = 0.3,
+    size = 0.1,
+    alpha = 0.1,
+    height = 0
+  ) +
+  geom_violin(color = "black",
+              alpha = 1,
+              linewidth = 0.5) +
   theme_classic() +
-  xlab("kdn confidence") +
-  ylab("Percentage (%)") +
-  scale_fill_manual(values = c("darkred", "gray50")) +
-  theme(#text=element_text(size=20), #change font size of all text
+  scale_fill_manual(
+    values = c("#6699CC",
+               "gray60",
+               "#CC6666",
+               "#CC99FF")
+  ) +
+  xlab("Parameter") +
+  ylab("log(Uncertainty)") +
+  theme(
     axis.text=element_text(size=8), #change font size of axis text
     axis.title=element_text(size=10), #change font size of axis titles
-    #plot.title=element_text(size=20), #change font size of plot title
     legend.text=element_text(size=8), #change font size of legend text
-    legend.title=element_text(size=10)) + #change font size of legend title
-  theme(legend.position = "none")
+    legend.title=element_text(size=10),
+    legend.position = "none")
 
 
 
-## Save figures
-setwd(savedir)
-ggsave(filename = "kdn_vs_kp_scatter_RPKnorm.pdf",
-       plot = gkdn,
-       width = 4.5,
-       height = 3)
-ggsave(filename = "pund_percentage_barplot_RPKnorm.pdf",
-       plot = gpp,
-       width = 2,
-       height = 1.67)
+### Polysome loading rate
 
+my_polys <- my_ests %>%
+  dplyr::select(XF, k5, se_k5) %>%
+  dplyr::filter(se_k5 < 1) %>%
+  dplyr::rename(Gene = XF,
+                my_kpoly = k5)
+
+church_polys <- churchman_ests %>%
+  dplyr::select(Gene, Symbol, PUND, half_life_poly_entry.Mean) %>%
+  na.omit() %>%
+  mutate(church_kpoly = log(2)/half_life_poly_entry.Mean)
+
+compare_polys <- my_polys %>%
+  inner_join(
+    church_polys,
+    by = c("Gene")
+  )
+
+
+kpl_plot <- compare_polys %>%
+  dplyr::filter(PUND == "FALSE") %>%
+  mutate(density = get_density(
+    x = log(church_kpoly),
+    y = my_kpoly,
+    n = 200
+  )) %>%
+  ggplot(aes(x = log(church_kpoly),
+             y = my_kpoly,
+             color = density)) +
+  geom_point(
+    size = 0.2
+  ) +
+  theme_classic() +
+  scale_color_viridis_c() +
+  xlab("log(kpl churchman") +
+  ylab("log(kpl EZbakR") +
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    color = 'darkred',
+    linetype = 'dotted',
+    linewidth = 0.4
+  ) +
+  theme(
+    axis.text=element_text(size=8), #change font size of axis text
+    axis.title=element_text(size=10), #change font size of axis titles
+    legend.text=element_text(size=8), #change font size of legend text
+    legend.title=element_text(size=10),
+    legend.position = "none")
+
+
+
+### Cytoplasmic degradation rate
+
+my_cyts <- my_ests %>%
+  dplyr::select(XF, k4, se_k4) %>%
+  dplyr::filter(se_k4 < 0.3) %>%
+  dplyr::rename(Gene = XF,
+                my_kcyto = k4)
+
+church_cyts <- churchman_ests %>%
+  dplyr::select(Gene, Symbol, PUND, half_life_cyto.Mean) %>%
+  na.omit() %>%
+  mutate(church_kcyto = log(2)/half_life_cyto.Mean)
+
+compare_cyts <- my_cyts %>%
+  inner_join(
+    church_cyts,
+    by = c("Gene")
+  )
+
+
+kdeg_plot <- compare_cyts %>%
+  dplyr::filter(PUND == "FALSE") %>%
+  mutate(density = get_density(
+    x = log(church_kcyto),
+    y = my_kcyto,
+    n = 200
+  )) %>%
+  ggplot(aes(x = log(church_kcyto),
+             y = my_kcyto,
+             color = density)) +
+  geom_point(
+    size = 0.2
+  ) +
+  theme_classic() +
+  scale_color_viridis_c() +
+  xlab("log(kdeg churchman") +
+  ylab("log(kdeg EZbakR") +
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    color = 'darkred',
+    linetype = 'dotted',
+    linewidth = 0.4
+  ) +
+  theme(
+    axis.text=element_text(size=8), #change font size of axis text
+    axis.title=element_text(size=10), #change font size of axis titles
+    legend.text=element_text(size=8), #change font size of legend text
+    legend.title=element_text(size=10),
+    legend.position = "none")
+
+
+### Nuclear export rate
+
+my_exps <- my_ests %>%
+  dplyr::select(XF, k3, se_k3) %>%
+  dplyr::filter(se_k3 < 0.3) %>%
+  dplyr::rename(Gene = XF,
+                my_kexp = k3)
+
+church_exps <- churchman_ests %>%
+  dplyr::select(Gene, Symbol, PUND, half_life_nucexp_from_nucres.Mean) %>%
+  na.omit() %>%
+  mutate(church_kexp = log(2)/half_life_nucexp_from_nucres.Mean)
+
+compare_exps <- my_exps %>%
+  inner_join(
+    church_exps,
+    by = c("Gene")
+  )
+
+
+kexp_plot <- compare_exps %>%
+  dplyr::filter(PUND == "FALSE") %>%
+  mutate(density = get_density(
+    x = log(church_kexp),
+    y = my_kexp,
+    n = 200
+  )) %>%
+  ggplot(aes(x = log(church_kexp),
+             y = my_kexp,
+             color = density)) +
+  geom_point(
+    size = 0.2
+  ) +
+  theme_classic() +
+  scale_color_viridis_c() +
+  xlab("log(kexp churchman") +
+  ylab("log(kexp EZbakR") +
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    color = 'darkred',
+    linetype = 'dotted',
+    linewidth = 0.4
+  ) +
+  theme(
+    axis.text=element_text(size=8), #change font size of axis text
+    axis.title=element_text(size=10), #change font size of axis titles
+    legend.text=element_text(size=8), #change font size of legend text
+    legend.title=element_text(size=10),
+    legend.position = "none")
+
+
+
+### Chromatin off rate comparison
+# Looks pretty darn similar
+# Differences likely due to dropout correction
+# and model differences
+
+my_chrs <- my_ests %>%
+  dplyr::select(XF, k2, se_k2) %>%
+  dplyr::filter(se_k2 < 0.3) %>%
+  dplyr::rename(Gene = XF,
+                my_kchr = k2)
+
+church_chrs <- churchman_ests %>%
+  dplyr::select(Gene, Symbol, PUND, half_life_chr.Mean) %>%
+  na.omit() %>%
+  mutate(church_kchr = log(2)/half_life_chr.Mean)
+
+compare_ests <- my_chrs %>%
+  inner_join(
+    church_chrs,
+    by = c("Gene")
+  )
+
+
+kch_plot <- compare_ests %>%
+  mutate(density = get_density(
+    x = log(church_kchr),
+    y = my_kchr,
+    n = 200
+  )) %>%
+  ggplot(aes(x = log(church_kchr),
+             y = my_kchr,
+             color = density)) +
+  geom_point(
+    size = 0.2
+  ) +
+  theme_classic() +
+  scale_color_viridis_c() +
+  xlab("log(kch churchman") +
+  ylab("log(kch EZbakR") +
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    color = 'darkred',
+    linetype = 'dotted',
+    linewidth = 0.4
+  ) +
+  theme(
+    axis.text=element_text(size=8), #change font size of axis text
+    axis.title=element_text(size=10), #change font size of axis titles
+    legend.text=element_text(size=8), #change font size of legend text
+    legend.title=element_text(size=10),
+    legend.position = "none")
+
+
+
+
+### Save plots
+setwd("C:/Users/isaac/Documents/Simon_Lab/EZbakR_paper/Figures/Supplemental_subtlseq/")
+ggsave(
+  filename = "kch_comparison.pdf",
+  plot = kch_plot,
+  width = 2.25,
+  height = 2
+)
+ggsave(
+  filename = "kexp_comparison.pdf",
+  plot = kexp_plot,
+  width = 2.25,
+  height = 2
+)
+ggsave(
+  filename = "kdeg_comparison.pdf",
+  plot = kdeg_plot,
+  width = 2.25,
+  height = 2
+)
+ggsave(
+  filename = "kpl_comparison.pdf",
+  plot = kpl_plot,
+  width = 2.25,
+  height = 2
+)
+ggsave(
+  filename = "uncertainty_comparison.pdf",
+  plot = u_violin,
+  width = 4.5,
+  height = 2
+)

@@ -2,15 +2,16 @@
 ## Reproduce Figure S3 of EZbakR-suite paper.
 ##
 ## Workflow:
-## 1) Analyze real NR-seq data with pre-RNA processing model in Figure 5A.
+## 1) Analyze simulated data with INSPEcT
+## 2) Analyze real NR-seq data with pre-RNA processing model in Figure 5A.
 ##    Data from Ietswaart et al., 2024.
-## 2) Make plots assessing premature RNA dynamics and trends
+## 3) Make plots assessing premature RNA dynamics and trends
 ## Required data:
 ## 1) cB file for total RNA data from Ietswaart et al., 2024.
 ## 2) Annotation file used in making cB file, for length normalizing
 ##    read counts.
 ##
-## Estimated total runtime: ~1.5-2 hours
+## Estimated total runtime: ~1 hour
 
 
 # Load dependencies ------------------------------------------------------------
@@ -22,6 +23,8 @@ library(EZbakR)
 library(rtracklayer)
 library(tidyr)
 library(readxl)
+library(dplyr)
+library(INSPEcT)
 
 # Path to save files and figures to
 savedir <- getwd()
@@ -48,10 +51,594 @@ get_density <- function(x, y, ...) {
 }
 
 
+# Figure S3A-B -----------------------------------------------------------------
 
-# Figure S3 --------------------------------------------------------------------
+##### Simulate data #####
 
-### Panel 1: Proportion intronic
+# Number of features to simulate
+nfeatures <- 1000
+
+# graph
+graph <- matrix(c(0, 1, 0,
+                  0, 0, 2,
+                  3, 0, 0),
+                nrow = 3,
+                ncol = 3,
+                byrow = TRUE)
+
+colnames(graph) <- c("0", "P", "M")
+rownames(graph) <- colnames(graph)
+
+# formula list
+total_list <- list(GF ~ P,
+                   XF ~ M)
+
+formula_list <- list(sampleA = total_list,
+                     sampleB = total_list,
+                     sampleC = total_list,
+                     sampleD = total_list)
+
+# metadf
+metadf <- dplyr::tibble(sample = c('sampleA', 'sampleB',
+                                   'sampleC', 'sampleD'),
+                        compartment = c('total', 'total',
+                                        'total', 'total'),
+                        tl = c(1, 1,
+                               3, 3))
+
+# means of log of parameters
+log_means <- c(1, -0.3, -2)
+
+# population sds on log scale of parameters
+log_sds <- rep(0.4, times = max(graph))
+
+# Unassigned indicator
+unassigned_name <- "__no_feature"
+
+# Sequencing depth
+seqdepth <- nfeatures * 2500
+
+# Negative binomial dispersion parameter (size in `rnbinom()`)
+dispersion <- 1000
+
+# Logit(fn) replicate variability (homoskedastic for now)
+lfn_sd <- 0.2
+
+
+
+simdata <- SimulateDynamics(nfeatures = nfeatures,
+                            graph = graph,
+                            metadf = metadf,
+                            formula_list = formula_list,
+                            log_means = log_means,
+                            log_sds = log_sds,
+                            unassigned_name = unassigned_name,
+                            seqdepth = seqdepth,
+                            dispersion = dispersion,
+                            lfn_sd = lfn_sd)
+
+
+##### Run INSPEcT with mutation cutoff fraction new estimates #####
+
+
+read_cts_nascent <- simdata$cB %>%
+  dplyr::filter(
+    sample %in% c("sampleC", "sampleD")
+  ) %>%
+  dplyr::group_by(sample, GF, XF) %>%
+  dplyr::summarise(
+    nascent_reads = sum(n[TC > 0])
+  ) %>%
+  dplyr::select(
+    sample, GF, XF, nascent_reads
+  ) %>%
+  dplyr::ungroup() %>%
+  tidyr::pivot_wider(
+    names_from = "sample",
+    values_from = nascent_reads,
+    values_fill = 0
+  )
+
+
+nascent_exon <- read_cts_nascent %>%
+  filter(!grepl("__", XF)) %>%
+  dplyr::select(-GF)
+
+nascent_intron <- read_cts_nascent %>%
+  filter(!grepl("__", GF)) %>%
+  dplyr::select(-XF)
+
+nascent_exon_mat <- nascent_exon %>%
+  dplyr::select(-XF) %>%
+  as.matrix()
+rownames(nascent_exon_mat) <- nascent_exon$XF
+
+nascent_intron_mat <- nascent_intron %>%
+  dplyr::select(-GF) %>%
+  as.matrix()
+rownames(nascent_intron_mat) <- nascent_intron$GF
+
+
+
+read_cts_total <- simdata$cB %>%
+  dplyr::filter(
+    sample %in% c("sampleC", "sampleD")
+  ) %>%
+  dplyr::group_by(sample, GF, XF) %>%
+  summarise(
+    n = sum(n)
+  ) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(
+    sample, GF, XF, n
+  ) %>%
+  tidyr::pivot_wider(
+    names_from = "sample",
+    values_from = n,
+    values_fill = 0
+  )
+
+
+total_exon <- read_cts_total %>%
+  filter(!grepl("__", XF)) %>%
+  dplyr::select(-GF)
+
+total_intron <- read_cts_total %>%
+  filter(!grepl("__", GF)) %>%
+  dplyr::select(-XF)
+
+
+total_exon_mat <- total_exon %>%
+  dplyr::select(-XF) %>%
+  as.matrix()
+rownames(total_exon_mat) <- total_exon$XF
+
+total_intron_mat <- total_intron %>%
+  dplyr::select(-GF) %>%
+  as.matrix()
+rownames(total_intron_mat) <- total_intron$GF
+
+exonwidths <- rep(1000, times = nrow(total_exon))
+names(exonwidths) <- total_exon$XF
+
+intronwidths <- rep(1000, times = nrow(total_intron))
+names(intronwidths) <- total_intron$GF
+
+
+matExp_DESeq2<-quantifyExpressionsFromTrCounts(
+  allcounts=list(exonsCounts = total_exon_mat + total_intron_mat,
+                 intronsCounts = total_intron_mat)
+  ,exonsWidths=exonwidths
+  ,intronsWidths=intronwidths
+  ,experimentalDesign=c(1, 1))
+
+
+nascExp_DESeq2<-quantifyExpressionsFromTrCounts(
+  allcounts=list(exonsCounts = nascent_exon_mat + nascent_intron_mat,
+                 intronsCounts = nascent_intron_mat)
+  ,exonsWidths=exonwidths
+  ,intronsWidths=intronwidths
+  ,experimentalDesign=c(1, 1))
+
+colSums(matExp_DESeq2$exonsExpressions)
+
+
+
+NI <- newINSPEcT("A",
+                 labeling_time = 3,
+                 nascentExpressions = nascExp_DESeq2,
+                 matureExpressions =  matExp_DESeq2,
+                 degDuringPulse = TRUE,
+                 simulatedData = FALSE)
+
+
+ksyn_ests <- ratesFirstGuess(NI, "synthesis") %>%
+  as_tibble(rownames = "feature")
+
+kp_ests <- ratesFirstGuess(NI, "processing") %>%
+  as_tibble(rownames = "feature")
+
+kd_ests <- ratesFirstGuess(NI, "degradation") %>%
+  as_tibble(rownames = "feature")
+
+
+
+### Assess accuracy ###
+
+gt <- simdata$ground_truth$parameter_truth
+
+dynfit <- ksyn_ests %>%
+  inner_join(
+    kp_ests,
+    by = "feature"
+  ) %>%
+  inner_join(
+    kd_ests,
+    by = "feature"
+  )
+
+compare <- dplyr::inner_join(dynfit, gt,
+                             by = "feature")
+
+
+scale_factor <- mean(compare$synthesis_A / compare$true_k1)
+
+
+gPk1 <- compare %>%
+  dplyr::mutate(density = get_density(
+    x = log(true_k1),
+    y = log(synthesis_A/scale_factor),
+    n = 200
+  )) %>%
+  ggplot(aes(x = log(true_k1),
+             y = log(synthesis_A/scale_factor),
+             color = density)) +
+  geom_point(size = 0.3) +
+  theme_classic() +
+  scale_color_viridis_c() +
+  xlab("log(true ksyn)") +
+  ylab("log(estimated ksyn)") +
+  geom_abline(slope =1,
+              intercept = 0,
+              color = 'darkred',
+              linewidth = 0.5,
+              linetype = 'dotted') +
+  theme(#text=element_text(size=20), #change font size of all text
+    axis.text=element_text(size=8), #change font size of axis text
+    axis.title=element_text(size=10), #change font size of axis titles
+    #plot.title=element_text(size=20), #change font size of plot title
+    legend.text=element_text(size=8), #change font size of legend text
+    legend.title=element_text(size=10)) + #change font size of legend title
+  theme(legend.position = "none")
+
+gPk1
+
+
+gPk2 <- compare %>%
+  dplyr::mutate(density = get_density(
+    x = log(true_k2),
+    y = log(processing_A),
+    n = 200
+  )) %>%
+  ggplot(aes(x = log(true_k2),
+             y = log(processing_A),
+             color = density)) +
+  geom_point(size = 0.3) +
+  theme_classic() +
+  scale_color_viridis_c() +
+  xlab("log(true kp)") +
+  ylab("log(estimated kp)") +
+  geom_abline(slope =1,
+              intercept = 0,
+              color = 'darkred',
+              linewidth = 0.5,
+              linetype = 'dotted') +
+  theme(#text=element_text(size=20), #change font size of all text
+    axis.text=element_text(size=8), #change font size of axis text
+    axis.title=element_text(size=10), #change font size of axis titles
+    #plot.title=element_text(size=20), #change font size of plot title
+    legend.text=element_text(size=8), #change font size of legend text
+    legend.title=element_text(size=10)) + #change font size of legend title
+  theme(legend.position = "none")
+
+gPk2
+
+gPk3 <- compare %>%
+  filter(degradation_A > 0) %>%
+  dplyr::mutate(density = get_density(
+    x = log(true_k3),
+    y = log(degradation_A),
+    n = 200
+  )) %>%
+  ggplot(aes(x = log(true_k3),
+             y = log(degradation_A),
+             color = density)) +
+  geom_point(size = 0.3) +
+  theme_classic() +
+  scale_color_viridis_c() +
+  xlab("log(true kdeg)") +
+  ylab("log(estimated kdeg)") +
+  geom_abline(slope =1,
+              intercept = 0,
+              color = 'darkred',
+              linewidth = 0.5,
+              linetype = 'dotted') +
+  theme(#text=element_text(size=20), #change font size of all text
+    axis.text=element_text(size=8), #change font size of axis text
+    axis.title=element_text(size=10), #change font size of axis titles
+    #plot.title=element_text(size=20), #change font size of plot title
+    legend.text=element_text(size=8), #change font size of legend text
+    legend.title=element_text(size=10)) + #change font size of legend title
+  theme(legend.position = "none")
+
+gPk3
+
+
+setwd(savedir)
+ggsave(
+  filename = "INSPEcT_ksyn_accuracy_mutation_cutoff.pdf",
+  plot = gPk1,
+  width = 2,
+  height = 1.67
+)
+ggsave(
+  filename = "INSPEcT_kp_accuracy_mutation_cutoff.pdf",
+  plot = gPk2,
+  width = 2,
+  height = 1.67
+)
+ggsave(
+  filename = "INSPEcT_kdeg_accuracy_mutation_cutoff.pdf",
+  plot = gPk3,
+  width = 2,
+  height = 1.67
+)
+
+
+
+##### Run INSPEcT with EZbakR fraction news #####
+
+cB <- simdata$cB %>%
+  dplyr::mutate(feature = dplyr::case_when(
+    GF == "__no_feature" ~ XF,
+    .default = GF
+  ))
+
+metadf <- metadf
+
+ezbdo <- EZbakRData(cB, metadf)
+
+ezbdo <- EstimateFractions(ezbdo)
+
+
+read_cts_nascent <- ezbdo$fractions$GF_XF_feature %>%
+  dplyr::filter(
+    sample %in% c("sampleC", "sampleD")
+  ) %>%
+  dplyr::mutate(
+    nascent_reads = round(n*fraction_highTC)
+  ) %>%
+  dplyr::select(
+    sample, GF, XF, nascent_reads
+  ) %>%
+  tidyr::pivot_wider(
+    names_from = "sample",
+    values_from = nascent_reads,
+    values_fill = 0
+  )
+
+
+nascent_exon <- read_cts_nascent %>%
+  filter(!grepl("__", XF)) %>%
+  dplyr::select(-GF)
+
+nascent_intron <- read_cts_nascent %>%
+  filter(!grepl("__", GF)) %>%
+  dplyr::select(-XF)
+
+nascent_exon_mat <- nascent_exon %>%
+  dplyr::select(-XF) %>%
+  as.matrix()
+rownames(nascent_exon_mat) <- nascent_exon$XF
+
+nascent_intron_mat <- nascent_intron %>%
+  dplyr::select(-GF) %>%
+  as.matrix()
+rownames(nascent_intron_mat) <- nascent_intron$GF
+
+
+
+read_cts_total <- ezbdo$fractions$GF_XF_feature %>%
+  dplyr::filter(
+    sample %in% c("sampleC", "sampleD")
+  ) %>%
+  dplyr::select(
+    sample, GF, XF, n
+  ) %>%
+  tidyr::pivot_wider(
+    names_from = "sample",
+    values_from = n,
+    values_fill = 0
+  )
+
+
+total_exon <- read_cts_total %>%
+  filter(!grepl("__", XF)) %>%
+  dplyr::select(-GF)
+
+total_intron <- read_cts_total %>%
+  filter(!grepl("__", GF)) %>%
+  dplyr::select(-XF)
+
+
+total_exon_mat <- total_exon %>%
+  dplyr::select(-XF) %>%
+  as.matrix()
+rownames(total_exon_mat) <- total_exon$XF
+
+total_intron_mat <- total_intron %>%
+  dplyr::select(-GF) %>%
+  as.matrix()
+rownames(total_intron_mat) <- total_intron$GF
+
+exonwidths <- rep(1000, times = nrow(total_exon))
+names(exonwidths) <- total_exon$XF
+
+intronwidths <- rep(1000, times = nrow(total_intron))
+names(intronwidths) <- total_intron$GF
+
+matExp_DESeq2<-quantifyExpressionsFromTrCounts(
+  allcounts=list(exonsCounts = total_exon_mat + total_intron_mat,
+                 intronsCounts = total_intron_mat)
+  ,exonsWidths=exonwidths
+  ,intronsWidths=intronwidths
+  ,experimentalDesign=c(1, 1))
+
+
+nascExp_DESeq2<-quantifyExpressionsFromTrCounts(
+  allcounts=list(exonsCounts = nascent_exon_mat + nascent_intron_mat,
+                 intronsCounts = nascent_intron_mat)
+  ,exonsWidths=exonwidths
+  ,intronsWidths=intronwidths
+  ,experimentalDesign=c(1, 1))
+
+colSums(matExp_DESeq2$exonsExpressions)
+
+
+
+NI <- newINSPEcT("A",
+                 labeling_time = 3,
+                 nascentExpressions = nascExp_DESeq2,
+                 matureExpressions =  matExp_DESeq2,
+                 degDuringPulse = TRUE,
+                 simulatedData = FALSE)
+
+
+ksyn_ests <- ratesFirstGuess(NI, "synthesis") %>%
+  as_tibble(rownames = "feature")
+
+kp_ests <- ratesFirstGuess(NI, "processing") %>%
+  as_tibble(rownames = "feature")
+
+kd_ests <- ratesFirstGuess(NI, "degradation") %>%
+  as_tibble(rownames = "feature")
+
+
+
+### Assess accuracy ###
+
+gt <- simdata$ground_truth$parameter_truth
+
+dynfit <- ksyn_ests %>%
+  inner_join(
+    kp_ests,
+    by = "feature"
+  ) %>%
+  inner_join(
+    kd_ests,
+    by = "feature"
+  )
+
+compare <- dplyr::inner_join(dynfit, gt,
+                             by = "feature")
+
+
+scale_factor <- mean(compare$synthesis_A / compare$true_k1)
+
+
+gPk1 <- compare %>%
+  dplyr::mutate(density = get_density(
+    x = log(true_k1),
+    y = log(synthesis_A/scale_factor),
+    n = 200
+  )) %>%
+  ggplot(aes(x = log(true_k1),
+             y = log(synthesis_A/scale_factor),
+             color = density)) +
+  geom_point(size = 0.3) +
+  theme_classic() +
+  scale_color_viridis_c() +
+  xlab("log(true ksyn)") +
+  ylab("log(estimated ksyn)") +
+  geom_abline(slope =1,
+              intercept = 0,
+              color = 'darkred',
+              linewidth = 0.5,
+              linetype = 'dotted') +
+  theme(#text=element_text(size=20), #change font size of all text
+    axis.text=element_text(size=8), #change font size of axis text
+    axis.title=element_text(size=10), #change font size of axis titles
+    #plot.title=element_text(size=20), #change font size of plot title
+    legend.text=element_text(size=8), #change font size of legend text
+    legend.title=element_text(size=10)) + #change font size of legend title
+  theme(legend.position = "none")
+
+gPk1
+
+
+gPk2 <- compare %>%
+  dplyr::mutate(density = get_density(
+    x = log(true_k2),
+    y = log(processing_A),
+    n = 200
+  )) %>%
+  ggplot(aes(x = log(true_k2),
+             y = log(processing_A),
+             color = density)) +
+  geom_point(size = 0.3) +
+  theme_classic() +
+  scale_color_viridis_c() +
+  xlab("log(true kp)") +
+  ylab("log(estimated kp)") +
+  geom_abline(slope =1,
+              intercept = 0,
+              color = 'darkred',
+              linewidth = 0.5,
+              linetype = 'dotted') +
+  theme(#text=element_text(size=20), #change font size of all text
+    axis.text=element_text(size=8), #change font size of axis text
+    axis.title=element_text(size=10), #change font size of axis titles
+    #plot.title=element_text(size=20), #change font size of plot title
+    legend.text=element_text(size=8), #change font size of legend text
+    legend.title=element_text(size=10)) + #change font size of legend title
+  theme(legend.position = "none")
+
+gPk2
+
+gPk3 <- compare %>%
+  filter(degradation_A > 0) %>%
+  dplyr::mutate(density = get_density(
+    x = log(true_k3),
+    y = log(degradation_A),
+    n = 200
+  )) %>%
+  ggplot(aes(x = log(true_k3),
+             y = log(degradation_A),
+             color = density)) +
+  geom_point(size = 0.3) +
+  theme_classic() +
+  scale_color_viridis_c() +
+  xlab("log(true kdeg)") +
+  ylab("log(estimated kdeg)") +
+  geom_abline(slope =1,
+              intercept = 0,
+              color = 'darkred',
+              linewidth = 0.5,
+              linetype = 'dotted') +
+  theme(#text=element_text(size=20), #change font size of all text
+    axis.text=element_text(size=8), #change font size of axis text
+    axis.title=element_text(size=10), #change font size of axis titles
+    #plot.title=element_text(size=20), #change font size of plot title
+    legend.text=element_text(size=8), #change font size of legend text
+    legend.title=element_text(size=10)) + #change font size of legend title
+  theme(legend.position = "none")
+
+gPk3
+
+
+setwd(savedir)
+ggsave(
+  filename = "INSPEcT_ksyn_accuracy.pdf",
+  plot = gPk1,
+  width = 2,
+  height = 1.67
+)
+ggsave(
+  filename = "INSPEcT_kp_accuracy.pdf",
+  plot = gPk2,
+  width = 2,
+  height = 1.67
+)
+ggsave(
+  filename = "INSPEcT_kdeg_accuracy.pdf",
+  plot = gPk3,
+  width = 2,
+  height = 1.67
+)
+
+
+
+# Figure S3C Panel 1: Proportion intronic --------------------------------------
 
 # Load data
 cB <- fread(cB_path)

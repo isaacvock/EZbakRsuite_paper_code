@@ -20,7 +20,7 @@ library(MASS)
 
 
 # Directory to save figures and data to
-savedir <- getwd()
+savedir <- "C:/Users/isaac/Documents/Simon_Lab/EZbakR_paper/Figures/Supplemental_complex/"
 
 # Source: https://slowkow.com/notes/ggplot2-color-by-density/
 # Get density of points in 2 dimensions.
@@ -38,7 +38,7 @@ get_density <- function(x, y, ...) {
 
 
 
-# Figure S4 --------------------------------------------------------------------
+# Figure S5 --------------------------------------------------------------------
 
 ##### SIMULATE DATA
 
@@ -49,7 +49,7 @@ nfeatures <- 1000
 graph <- matrix(c(0, 1, 0, 0, 0,
                   0, 0, 2, 3, 0,
                   0, 0, 0, 0, 4,
-                  0, 0, 0, 0, 5,
+                  5, 0, 0, 0, 0,
                   6, 0, 0, 0, 0),
                 nrow = 5,
                 ncol = 5,
@@ -106,16 +106,17 @@ lfn_sd <- 0.2
 
 
 
-simdata <- SimulateDynamics(nfeatures=nfeatures,
-                            graph = graph,
-                            metadf = metadf,
-                            formula_list = formula_list,
-                            log_means = log_means,
-                            log_sds = log_sds,
-                            unassigned_name = unassigned_name,
-                            seqdepth = seqdepth,
-                            dispersion = dispersion,
-                            lfn_sd = lfn_sd)
+simdata <- EZbakR:::SimulateDynamics(nfeatures,
+                                     graph,
+                                     metadf,
+                                     formula_list = formula_list,
+                                     log_means = log_means,
+                                     log_sds = log_sds,
+                                     unassigned_name = unassigned_name,
+                                     seqdepth = seqdepth,
+                                     dispersion = dispersion,
+                                     lfn_sd = lfn_sd)
+
 
 
 metadf <- metadf
@@ -137,6 +138,7 @@ ezbdo <- AverageAndRegularize(ezbdo,
                               parameter = "logit_fraction_highTC",
                               min_reads = 1)
 
+
 ### Estimate parameters
 
 ezbdo <- EZDynamics(ezbdo,
@@ -144,6 +146,7 @@ ezbdo <- EZDynamics(ezbdo,
                     sub_features = c("GF", "XF"),
                     grouping_features = "feature",
                     sample_feature = "compartment",
+                    #scale_factors = scale_df,
                     modeled_to_measured = list(
                       total = total_list,
                       nuclear = nuc_list,
@@ -154,40 +157,23 @@ ezbdo <- EZDynamics(ezbdo,
 ### Assess accuracy
 gt <- simdata$ground_truth$parameter_truth
 
-# Change names to reflect old naming convention used to make
-# the plots originally
-dynfit <- ezbdo$dynamics$dynamics1 %>%
-  dplyr::rename(
-    k1 = logk1,
-    k2 = logk2,
-    k3 = logk3,
-    k4 = logk4,
-    k5 = logk5,
-    k6 = logk6,
-    k1_se = se_logk1,
-    k2_se = se_logk2,
-    k3_se = se_logk3,
-    k4_se = se_logk4,
-    k5_se = se_logk5,
-    k6_se = se_logk6
-  )
-
+dynfit <- ezbdo$dynamics$dynamics1
 
 compare <- dplyr::inner_join(dynfit, gt,
                              by = "feature")
 
 
-scale_factor <- mean(exp(compare$k1) / compare$true_k1)
+scale_factor <- mean(exp(compare$logk1) / compare$true_k1)
 
 point_size <- 0.4
 gPk1 <- compare %>%
   dplyr::mutate(density = get_density(
     x = log(true_k1),
-    y = log(exp(k1)/scale_factor),
+    y = log(exp(logk1)/scale_factor),
     n = 200
   )) %>%
   ggplot(aes(x = log(true_k1),
-             y = log(exp(k1)/scale_factor),
+             y = log(exp(logk1)/scale_factor),
              color = density)) +
   geom_point(size=point_size) +
   theme_classic() +
@@ -213,11 +199,11 @@ gPk1 <- compare %>%
 gPk2 <- compare %>%
   dplyr::mutate(density = get_density(
     x = log(true_k2),
-    y = k2,
+    y = logk2,
     n = 200
   )) %>%
   ggplot(aes(x = log(true_k2),
-             y = k2,
+             y = logk2,
              color = density)) +
   geom_point(size=point_size) +
   theme_classic() +
@@ -242,11 +228,11 @@ gPk2 <- compare %>%
 gPk3 <- compare %>%
   dplyr::mutate(density = get_density(
     x = log(true_k3),
-    y = k3,
+    y = logk3,
     n = 200
   )) %>%
   ggplot(aes(x = log(true_k3),
-             y = k3,
+             y = logk3,
              color = density)) +
   geom_point(size=point_size) +
   theme_classic() +
@@ -271,11 +257,11 @@ gPk3 <- compare %>%
 gPk4 <- compare %>%
   dplyr::mutate(density = get_density(
     x = log(true_k4),
-    y = k4,
+    y = logk4,
     n = 200
   )) %>%
   ggplot(aes(x = log(true_k4),
-             y = k4,
+             y = logk4,
              color = density)) +
   geom_point(size=point_size) +
   theme_classic() +
@@ -299,17 +285,17 @@ gPk4 <- compare %>%
 gPk5 <- compare %>%
   dplyr::mutate(density = get_density(
     x = log(true_k5),
-    y = k5,
+    y = logk5,
     n = 200
   )) %>%
   ggplot(aes(x = log(true_k5),
-             y = k5,
+             y = logk5,
              color = density)) +
   geom_point(size=point_size) +
   theme_classic() +
   scale_color_viridis_c() +
-  xlab("log(true kCPtoCM)") +
-  ylab("log(estimated kCPtoCM)") +
+  xlab("log(true kCPdeg)") +
+  ylab("log(estimated kCPdeg)") +
   geom_abline(slope =1,
               intercept = 0,
               color = 'darkred',
@@ -327,11 +313,11 @@ gPk5 <- compare %>%
 gPk6 <- compare %>%
   dplyr::mutate(density = get_density(
     x = log(true_k6),
-    y = k6,
+    y = logk6,
     n = 200
   )) %>%
   ggplot(aes(x = log(true_k6),
-             y = k6,
+             y = logk6,
              color = density)) +
   geom_point(size=point_size) +
   theme_classic() +
@@ -351,17 +337,6 @@ gPk6 <- compare %>%
     legend.title=element_text(size=10)) + #change font size of legend title
   theme(legend.position = "none")
 
-
-gPk1
-gPk2
-gPk3
-gPk4
-gPk5
-gPk6
-
-setwd(savedir)
-saveRDS(ezbdo,
-        "NucCyto_PandM_EZnormalized_fit.rds")
 
 
 setwd(savedir)
@@ -401,4 +376,3 @@ ggsave(
   width = 2,
   height = 1.67
 )
-

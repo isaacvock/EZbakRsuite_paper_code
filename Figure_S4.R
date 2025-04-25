@@ -3,8 +3,9 @@
 ##
 ## Workflow:
 ## 1) Simulate NR-seq data with simple nuclear -> cytoplasmic model.
-## 2) Estimate parameters of model with 3 strategies: 1) no read count
-##    modeling; 2) library size normalization; 3) EZbakR normalization
+## 2) Estimate parameters of model with 4 strategies: 1) no read count
+##    modeling; 2) library size normalization; 3) EZbakR normalization;
+##    4) Spike-in normalization (i.e., provide true scale factors to EZbakR)
 ## 3) Make plots assessing accuracy of parameter estimates
 ##
 ## Required data: None
@@ -542,4 +543,241 @@ saveRDS(ezbdo_un,
         "NucCyto_Unnormalized_fit.rds")
 saveRDS(ezbdo_ls,
         "NucCyto_LibrarySizeNorm_fit.rds")
+
+
+
+#### Spike-ins ####
+# For simplicity, will just provide true scale factors to EZbakR
+# to simulate best case spike-in strategy.
+
+
+metadf <- metadf
+
+ezbdo <- EZbakRData(simdata$cB, metadf)
+
+ezbdo <- EstimateFractions(ezbdo)
+
+
+ezbdo <- AverageAndRegularize(ezbdo,
+                              formula_mean = ~tl:compartment - 1,
+                              type = "fractions",
+                              parameter = "logit_fraction_highTC")
+
+### Estimate scale factors
+
+get_solutions <- function(parameter_ests, graph, tl){
+
+  # Parameters are on log-scale for ease of optimization
+  param_extend <- c(0, exp(parameter_ests))
+  param_graph <- matrix(param_extend[graph + 1],
+                        nrow = nrow(graph),
+                        ncol = ncol(graph),
+                        byrow = FALSE)
+
+  # A is same size as graph minus the "0" row and column
+  A <- matrix(0,
+              nrow = nrow(graph) - 1,
+              ncol = ncol(graph) - 1)
+
+  rownames(A) <- rownames(graph[-1,])
+  colnames(A) <- rownames(graph[-1,])
+
+
+
+  zero_index <- which(colnames(graph) == "0")
+
+  # Left as an exercise to the reader
+  # Just kidding, I'll document this somewhere.
+  # TO-DO: Should really compile documentation for all
+  # non-obvious mathematical results
+  diag(A) <- -rowSums(param_graph[-zero_index,])
+  A <- A + t(param_graph[-zero_index,-zero_index])
+
+
+  ### Step 2: infer general solution
+
+  Rss <- solve(a = A,
+               b = -param_graph[zero_index,-zero_index])
+
+
+  ev <- eigen(A)
+
+  lambda <- ev$values
+  V<- ev$vectors
+  cs <- solve(V, -Rss)
+
+
+  ### Step 3: Infer data for actual measured species
+  exp_lambda <- exp(lambda*tl)
+
+  scaled_eigenvectors <- V %*% diag(exp_lambda*cs)
+
+  result_vector <- rowSums(scaled_eigenvectors) + Rss
+
+  names(result_vector) <- rownames(A)
+
+  fns <- result_vector/Rss
+  return(list(fns = fns,
+              ss = Rss))
+}
+
+
+true_params <- simdata$ground_truth$parameter_truth
+
+Ns <- rep(0, times = nrow(true_params))
+Cs <- Ns
+
+for(i in 1:nrow(true_params)){
+
+  ss <- get_solutions(log(c(simdata$ground_truth$parameter_truth$true_k1[i],
+                            simdata$ground_truth$parameter_truth$true_k2[i],
+                            simdata$ground_truth$parameter_truth$true_k3[i])),
+                      graph,
+                      1)$ss
+
+  Ns[i] <- ss[1]
+  Cs[i] <- ss[2]
+
+}
+
+scale <- sum(Ns) / (sum(Cs) + sum(Ns))
+
+scale_df <- tibble(scale = c(1, (1-scale)/scale, 1 + ((1-scale)/scale)),
+                   compartment = c("nuclear", "cytoplasm", "total"))
+scale_df
+
+### Estimate parameters
+
+ezbdo_ez <- EZDynamics(ezbdo,
+                       graph = graph,
+                       sub_features = "GF",
+                       grouping_features = "GF",
+                       sample_feature = "compartment",
+                       scale_factors = scale_df,
+                       modeled_to_measured = list(
+                         total = total_list,
+                         nuclear = nuc_list,
+                         cytoplasm = cyt_list
+                       ))
+
+
+### Assess accuracy
+gt <- simdata$ground_truth$parameter_truth
+
+dynfit <- ezbdo_ez$dynamics$dynamics1 %>%
+  dplyr::filter(!((logk1 > 9.9 | logk1 < -9.9) |
+                    (logk2 > 9.9 | logk2 < -9.9) |
+                    (logk3 > 9.9 | logk3 < -9.9)))
+
+compare <- dplyr::inner_join(dynfit, gt %>% dplyr::rename(GF = feature),
+                             by = "GF")
+
+true_scale_factor <- mean(exp(compare$logk1[compare$logk1 < 9.9]) / compare$true_k1[compare$logk1 < 9.9])
+
+
+gPk1 <- compare %>%
+  dplyr::mutate(density = get_density(
+    x = log(true_k1),
+    y = log(exp(logk1)/true_scale_factor),
+    n = 200
+  )) %>%
+  ggplot(aes(x = log(true_k1),
+             y = log(exp(logk1)/true_scale_factor),
+             color = density)) +
+  geom_point(size=0.4) +
+  theme_classic() +
+  scale_color_viridis_c() +
+  xlab("log(true ksyn)") +
+  ylab("log(estimated ksyn)") +
+  geom_abline(slope =1,
+              intercept = 0,
+              color = 'darkred',
+              linewidth = 0.5,
+              linetype = 'dotted') +
+  theme(axis.text=element_text(size=8),
+        axis.title=element_text(size=10),
+        legend.text=element_text(size=8),
+        legend.title=element_text(size=10)) +
+  theme(legend.position = "none")
+
+
+
+
+gPk2 <- compare %>%
+  dplyr::mutate(density = get_density(
+    x = log(true_k2),
+    y = logk2,
+    n = 200
+  )) %>%
+  ggplot(aes(x = log(true_k2),
+             y = logk2,
+             color = density)) +
+  geom_point(size=0.4) +
+  theme_classic() +
+  scale_color_viridis_c() +
+  xlab("log(true kexp)") +
+  ylab("log(estimated kexp)") +
+  geom_abline(slope =1,
+              intercept = 0,
+              color = 'darkred',
+              linewidth = 0.5,
+              linetype = 'dotted') +
+  theme(#text=element_text(size=20), #change font size of all text
+    axis.text=element_text(size=8), #change font size of axis text
+    axis.title=element_text(size=10), #change font size of axis titles
+    #plot.title=element_text(size=20), #change font size of plot title
+    legend.text=element_text(size=8), #change font size of legend text
+    legend.title=element_text(size=10)) + #change font size of legend title
+  theme(legend.position = "none")
+
+
+gPk3 <- compare %>%
+  dplyr::mutate(density = get_density(
+    x = log(true_k3),
+    y = logk3,
+    n = 200
+  )) %>%
+  ggplot(aes(x = log(true_k3),
+             y = logk3,
+             color = density)) +
+  geom_point(size=0.4) +
+  theme_classic() +
+  scale_color_viridis_c() +
+  xlab("log(true kdeg)") +
+  ylab("log(estimated kdeg)") +
+  geom_abline(slope =1,
+              intercept = 0,
+              color = 'darkred',
+              linewidth = 0.5,
+              linetype = 'dotted') +
+  theme(#text=element_text(size=20), #change font size of all text
+    axis.text=element_text(size=8), #change font size of axis text
+    axis.title=element_text(size=10), #change font size of axis titles
+    #plot.title=element_text(size=20), #change font size of plot title
+    legend.text=element_text(size=8), #change font size of legend text
+    legend.title=element_text(size=10)) + #change font size of legend title
+  theme(legend.position = "none")
+
+
+
+### Save figures
+setwd(savedir)
+ggsave(
+  filename = "SpikeInNormalization_ksyn_accuracy.pdf",
+  plot = gPk1,
+  width = 2,
+  height = 1.67
+)
+ggsave(
+  filename = "SpikeInNormalization_kexp_accuracy.pdf",
+  plot = gPk2,
+  width = 2,
+  height = 1.67
+)
+ggsave(
+  filename = "SpikeInNormalization_kdeg_accuracy.pdf",
+  plot = gPk3,
+  width = 2,
+  height = 1.67
+)
 
